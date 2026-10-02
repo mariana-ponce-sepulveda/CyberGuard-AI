@@ -1,0 +1,14 @@
+{
+  "_comment": "Política IAM de mínimo privilegio para el rol de ejecución de la Lambda cyberguard-analyze. Sustituir {REGION} y {BEDROCK_MODEL_ID} con los valores reales confirmados en la consola de Bedrock.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvokeModel",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel"
+      ],
+      "Resource": "arn:aws:bedrock:{REGION}::foundation-model/{BEDROCK_MODEL_ID}"
+    }
+  ]
+}

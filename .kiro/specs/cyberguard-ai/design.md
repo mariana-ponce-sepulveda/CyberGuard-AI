@@ -30,7 +30,7 @@
 │                    AMAZON API GATEWAY                            │
 │           HTTP API  POST /analyze                                │
 │           Valida formato de la request                           │
-│           Invoca Lambda de forma asíncrona                       │
+│           Invoca Lambda de forma síncrona (proxy)                │
 │           CORS configurado para el dominio de Amplify            │
 └────────────┬─────────────────────────────────────────────────────┘
              │  Event (payload JSON)
@@ -53,10 +53,12 @@
              │  AWS SDK (bedrock-runtime)
 ┌────────────▼─────────────────────────────────────────────────────┐
 │                     AMAZON BEDROCK                               │
-│           Modelo: Anthropic Claude 3 Haiku                       │
-│           (o Amazon Titan Text si Haiku no está disponible)      │
-│           Invocación síncrona vía InvokeModel                    │
-│           Respuesta: JSON estructurado definido por el prompt    │
+│  Modelo: configurado vía BEDROCK_MODEL_ID (variable de entorno)  │
+│  Seleccionar según disponibilidad en la región de despliegue     │
+│  Modelos compatibles: Anthropic Claude 3 Haiku (recomendado),    │
+│  Claude 3 Sonnet, Amazon Titan Text Express u otros disponibles  │
+│  Invocación síncrona vía InvokeModel                             │
+│  Respuesta: JSON estructurado definido por el prompt             │
 └──────────────────────────────────────────────────────────────────┘
 
                IAM  ──  gestiona permisos entre todos los servicios
@@ -82,32 +84,51 @@
 #### AWS Lambda
 **Rol:** backend serverless — toda la lógica de análisis vive aquí.
 **Por qué:** sin servidor que gestionar, pago por invocación (costo casi cero en MVP), escala automáticamente. La lógica de negocio (sanitización, llamada a Bedrock, fallback heurístico, construcción del resultado) queda completamente aislada del cliente.
-**Relación:** es invocada por API Gateway, llama a Bedrock vía AWS SDK, y devuelve el resultado a API Gateway que lo retorna al frontend.
+**Relación:** es invocada por API Gateway de forma síncrona (proxy integration), llama a Bedrock vía AWS SDK, y devuelve el resultado a API Gateway que lo retorna al frontend.
 **Configuración para el MVP:**
 - Runtime: Node.js 20.x
 - Memoria: 256 MB (suficiente para el análisis de texto)
-- Timeout: 30 segundos (Bedrock puede tardar hasta 20s en respuesta lenta)
+- Timeout de Lambda: **30 segundos** (margen sobre el timeout interno de Bedrock)
+- Timeout interno de Bedrock: **20 segundos** (controlado en el código con AbortSignal o Promise.race)
+- Si Bedrock supera los 20s, el fallback heurístico se activa inmediatamente dentro de la misma invocación
 - Variables de entorno: `BEDROCK_MODEL_ID`, `AWS_REGION`
 
 #### Amazon Bedrock
 **Rol:** proveedor del modelo de lenguaje para el análisis de phishing.
-**Por qué:** Bedrock permite usar modelos de IA generativa (Anthropic Claude, Amazon Titan) sin gestionar infraestructura de ML. El acceso es mediante el AWS SDK estándar usando el rol IAM de Lambda; no se necesita API Key externa.
-**Modelo recomendado:** **Anthropic Claude 3 Haiku** — es el modelo más rápido y económico de la familia Claude, adecuado para análisis de texto corto con respuesta JSON estructurada.
-**Alternativa:** Amazon Titan Text Express si Claude no está disponible en la región del despliegue.
+**Por qué:** Bedrock permite usar modelos de IA generativa sin gestionar infraestructura de ML. El acceso es mediante el AWS SDK estándar usando el rol IAM de Lambda; no se necesita API Key externa.
+
+**Selección del modelo — importante:**
+El modelo a utilizar **debe seleccionarse según la disponibilidad en Amazon Bedrock en la región de despliegue**. No todos los modelos están disponibles en todas las regiones o cuentas. El model ID se gestiona exclusivamente mediante la variable de entorno `BEDROCK_MODEL_ID` en Lambda; nunca debe estar hardcodeado en el código.
+
+Modelos compatibles con el prompt de CyberGuard AI (en orden de preferencia):
+- `anthropic.claude-3-haiku-20240307-v1:0` — más rápido y económico, respuesta JSON fiable.
+- `anthropic.claude-3-sonnet-20240229-v1:0` — mayor calidad, latencia algo superior.
+- `amazon.titan-text-express-v1` — alternativa nativa de AWS si Anthropic no está disponible; requiere ajustar el formato del payload (no usa Messages API).
+
+Pasos para confirmar disponibilidad antes de desplegar:
+1. Abrir la consola de Amazon Bedrock en la región objetivo.
+2. Ir a "Model access" y verificar qué modelos están habilitados.
+3. Solicitar acceso si es necesario (puede tardar minutos u horas).
+4. Establecer el model ID confirmado en la variable de entorno `BEDROCK_MODEL_ID` de Lambda.
+
 **Relación:** Lambda invoca Bedrock vía `BedrockRuntimeClient.send(InvokeModelCommand)`. La respuesta es el JSON estructurado del análisis.
-**Posible simplificación:** Bedrock es el núcleo del MVP; no se puede simplificar. Lo que sí se puede ajustar es el modelo según disponibilidad regional.
+**Posible simplificación:** Bedrock es el núcleo del MVP; no se puede eliminar. La flexibilidad está en el modelo: cambiar `BEDROCK_MODEL_ID` es suficiente para cambiar de modelo sin modificar el código, siempre que sea de la familia Anthropic (mismo formato de payload).
 
 #### AWS IAM
 **Rol:** control de permisos entre servicios, principio de mínimo privilegio.
 **Por qué:** sin IAM correctamente configurado, Lambda no puede llamar a Bedrock, o peor, podría tener acceso excesivo a otros servicios.
 **Configuración para el MVP:**
+
+El ARN del recurso en la política debe reflejar el model ID que se haya confirmado disponible. Ejemplo para Claude 3 Haiku:
 ```json
 {
   "Effect": "Allow",
   "Action": ["bedrock:InvokeModel"],
-  "Resource": "arn:aws:bedrock:{region}::foundation-model/anthropic.claude-3-haiku-*"
+  "Resource": "arn:aws:bedrock:{region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
 }
 ```
+Si se usa un modelo diferente, actualizar el ARN del `Resource` al model ID correspondiente. Para cubrir múltiples modelos durante pruebas se puede usar un wildcard acotado: `arn:aws:bedrock:{region}::foundation-model/anthropic.claude-3-*`
+
 Lambda no necesita ningún otro permiso. CloudWatch Logs se habilita automáticamente con el rol de ejecución básico de Lambda (`AWSLambdaBasicExecutionRole`).
 **Relación:** el rol IAM se adjunta a Lambda. API Gateway no necesita permisos IAM adicionales para invocar Lambda en una HTTP API (usa resource-based policy).
 
@@ -125,21 +146,32 @@ Lambda no necesita ningún otro permiso. CloudWatch Logs se habilita automática
 
 ### Flujo de datos completo
 
+El flujo es **completamente síncrono**: el frontend espera bloqueado hasta recibir la respuesta de Lambda a través de API Gateway. No hay polling ni websockets.
+
 ```
 1. Usuario ingresa contenido en el frontend (Amplify)
 2. Frontend envía POST HTTPS a API Gateway: { content, type }
-3. API Gateway valida formato básico e invoca Lambda
-4. Lambda:
+   └── El frontend muestra el estado de carga y espera la respuesta HTTP
+3. API Gateway recibe la request y la reenvía síncronamente a Lambda (proxy integration)
+   └── API Gateway mantiene la conexión abierta hasta que Lambda responde
+4. Lambda procesa la solicitud (todo en la misma invocación síncrona):
    a. Valida y sanitiza el input (Zod + sanitizer)
    b. Construye el prompt con el contenido
-   c. Llama a Bedrock (Claude 3 Haiku) con InvokeModel
-   d. Si Bedrock responde: parsea JSON → AnalysisResult (source: 'llm')
-   e. Si Bedrock falla/timeout: ejecuta análisis heurístico → AnalysisResult (source: 'heuristic')
+   c. Llama a Bedrock con InvokeModel y espera la respuesta (timeout interno: 20s)
+   d. Si Bedrock responde en ≤ 20s: parsea JSON → AnalysisResult (source: 'llm')
+   e. Si Bedrock no responde en 20s o lanza error: activa inmediatamente el
+      análisis heurístico → AnalysisResult (source: 'heuristic')
    f. Retorna { success: true, result: AnalysisResult } a API Gateway
-5. API Gateway devuelve la respuesta al frontend
-6. Frontend renderiza el ResultCard con animaciones
+5. API Gateway retorna la respuesta HTTP al frontend (conexión que mantuvo abierta)
+6. Frontend recibe la respuesta, oculta el estado de carga y renderiza ResultCard
 7. CloudWatch registra métricas y errores técnicos (sin contenido del usuario)
 ```
+
+**Tiempos definidos:**
+- Timeout interno de Bedrock en Lambda: **20 segundos** (AbortSignal o try/catch con Promise.race).
+- Timeout total de Lambda: **30 segundos** (margen de 10s sobre Bedrock para validación y fallback).
+- Objetivo de experiencia de usuario: resultado visible en **≤ 15 segundos** en condiciones normales.
+- Si Bedrock supera los 20s, el fallback heurístico debe activarse y responder en < 1 segundo adicional, manteniendo el total dentro del objetivo de 15s para la demo.
 
 ---
 
@@ -388,11 +420,21 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 
 const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
 
-// El modelo se lee desde variable de entorno para facilitar el cambio
-// Valor por defecto: anthropic.claude-3-haiku-20240307-v1:0
-const MODEL_ID = process.env.BEDROCK_MODEL_ID ?? 'anthropic.claude-3-haiku-20240307-v1:0';
+// IMPORTANTE: el model ID se lee SIEMPRE desde variable de entorno.
+// Nunca hardcodear un model ID específico en el código.
+// Confirmar disponibilidad del modelo en Bedrock antes de desplegar (ver design.md).
+const MODEL_ID = process.env.BEDROCK_MODEL_ID;
+if (!MODEL_ID) {
+  throw new Error('BEDROCK_MODEL_ID environment variable is not set');
+}
 
-// Formato de payload para modelos Anthropic en Bedrock (Messages API)
+// Timeout interno para Bedrock: 20 segundos.
+// Si se supera, el handler activa el fallback heurístico inmediatamente.
+const BEDROCK_TIMEOUT_MS = 20_000;
+
+// Formato de payload para modelos Anthropic en Bedrock (Messages API).
+// Si se usa Amazon Titan u otro proveedor, el formato del payload difiere;
+// actualizar según la documentación del modelo seleccionado.
 const payload = {
   anthropic_version: 'bedrock-2023-05-31',
   max_tokens: 1024,
@@ -400,6 +442,9 @@ const payload = {
   system: SYSTEM_PROMPT,
   messages: [{ role: 'user', content: buildUserPrompt(content, type) }]
 };
+
+// Implementar timeout con AbortController + Promise.race para activar
+// el fallback heurístico si Bedrock no responde en BEDROCK_TIMEOUT_MS.
 ```
 
 ---
@@ -684,6 +729,8 @@ Todas las duraciones deben respetar `prefers-reduced-motion`.
 
 ## Flujo de datos del análisis
 
+El flujo es **síncrono de extremo a extremo**: el frontend hace una única llamada HTTP y espera la respuesta. No hay polling, callbacks ni websockets.
+
 ```
 Usuario ingresa contenido en el frontend (servido por Amplify)
         │
@@ -691,25 +738,24 @@ Usuario ingresa contenido en el frontend (servido por Amplify)
 useAnalyzer hook
   ├── Validación Zod (client-side)
   └── setLoading(true) → muestra AnalyzingState
-        │
+        │  fetch POST — el frontend mantiene la conexión abierta
         ▼
 POST https://{api-id}.execute-api.{region}.amazonaws.com/analyze
-  (API Gateway HTTP API)
-        │
+  (API Gateway HTTP API — proxy síncrono)
+        │  reenvía la request y mantiene la conexión hasta respuesta de Lambda
         ▼
-Lambda: cyberguard-analyze
+Lambda: cyberguard-analyze (invocación síncrona, timeout 30s)
   ├── Validación server-side (Zod)
   ├── Sanitización del input
-  ├── Intento: Bedrock InvokeModel (Claude 3 Haiku, timeout 25s)
-  │     ├── Éxito → parsear JSON con Zod → AnalysisResult (source: 'llm')
-  │     └── Error/timeout → Heuristic Analyzer → AnalysisResult (source: 'heuristic')
-  └── Retorna { success: true, result } a API Gateway
-        │
+  ├── Intento: Bedrock InvokeModel
+  │     ├── Timeout interno: 20s (AbortSignal / Promise.race)
+  │     ├── Éxito (≤ 20s) → parsear JSON con Zod → AnalysisResult (source: 'llm')
+  │     └── Error o timeout (> 20s) → activa fallback INMEDIATAMENTE
+  │                                   → Heuristic Analyzer (< 1s) → AnalysisResult (source: 'heuristic')
+  └── Retorna respuesta HTTP a API Gateway (tiempo total objetivo: ≤ 15s en demo)
+        │  API Gateway retorna la respuesta al frontend
         ▼
-API Gateway devuelve respuesta al frontend
-        │
-        ▼
-useAnalyzer hook
+useAnalyzer hook recibe la respuesta
   ├── setResult(data)
   └── setLoading(false) → anima entrada de ResultCard
         │
@@ -721,6 +767,8 @@ ResultCard renderiza con animaciones
 
 ## Ejemplos predefinidos para Demo Day
 
+> ⚠️ **Aviso de seguridad sobre los ejemplos:** Todos los dominios, URLs y direcciones de correo utilizados en los ejemplos son **completamente ficticios y creados únicamente para demostración segura**. No existen como sitios reales, no deben visitarse, y no deben utilizarse fuera del contexto de esta aplicación educativa. En ningún caso se deben utilizar dominios realmente maliciosos, URLs de phishing activas ni correos de atacantes reales como ejemplos de demostración.
+
 ```typescript
 export const DEMO_EXAMPLES: DemoExample[] = [
   {
@@ -728,6 +776,7 @@ export const DEMO_EXAMPLES: DemoExample[] = [
     label: '🔴 Correo bancario falso',
     type: 'message',
     expectedRisk: 'alto',
+    // Dominio ficticio creado solo para demostración. No existe ni debe visitarse.
     content: `De: soporte@bancoseguro-alertas.com
 Asunto: URGENTE: Su cuenta ha sido suspendida
 
@@ -748,6 +797,7 @@ Departamento de Seguridad — Banco Seguro S.A.`
     label: '🟡 URL sospechosa',
     type: 'url',
     expectedRisk: 'medio',
+    // URL ficticia creada solo para demostración. No existe ni debe visitarse.
     content: 'http://paypa1-secure-login.verificacion-cuenta.tk/signin'
   },
   {
@@ -786,11 +836,13 @@ María`
 | Decisión | Alternativa considerada | Justificación |
 |----------|------------------------|---------------|
 | React + Vite (SPA) en Amplify | Next.js en Amplify SSR | La app es una SPA sin SSR; Vite produce archivos estáticos más simples y compatibles con Amplify hosting |
-| Amazon Bedrock (Claude 3 Haiku) | OpenAI GPT-4o-mini | Bedrock es nativo en AWS, usa el rol IAM de Lambda (sin API Key externa), bajo costo por token, latencia adecuada |
+| Amazon Bedrock (modelo vía env var) | OpenAI GPT-4o-mini / modelo hardcodeado | Bedrock es nativo en AWS sin API Key externa; la variable de entorno permite cambiar el modelo sin tocar el código según disponibilidad regional |
+| Flujo síncrono (HTTP request/response) | Async con polling o WebSockets | El análisis de texto tarda < 15s; el modelo síncrono es más simple, sin estado adicional ni infraestructura extra |
+| Timeout Bedrock 20s + Lambda 30s | Un solo timeout de Lambda | Separar el timeout de Bedrock del de Lambda permite activar el fallback heurístico dentro de la misma invocación en lugar de devolver un error al usuario |
 | Lambda + API Gateway | Next.js API Routes | La separación frontend/backend es correcta en AWS; Lambda es serverless, sin servidor que gestionar |
 | HTTP API Gateway (no REST API) | REST API Gateway | HTTP API tiene menor latencia y menor costo; suficiente para el MVP |
 | Amplify Hosting | S3 + CloudFront manual | Amplify simplifica CI/CD, HTTPS y configuración de dominio; S3+CloudFront es más flexible pero innecesariamente complejo para el MVP |
 | shadcn/ui | MUI / Chakra UI | Mayor control sobre estilos, integración directa con Tailwind |
 | Framer Motion | CSS transitions puras | Animaciones más complejas (stagger, layout animations) con API declarativa |
-| Fallback heurístico en Lambda | Solo Bedrock | Garantiza demostración funcional si Bedrock tiene latencia alta o errores transitorios |
+| Fallback heurístico inmediato | Solo Bedrock / error visible | Garantiza resultado útil al usuario si Bedrock tarda más de 20s, sin degradar la experiencia de demo |
 | JSON estructurado de Bedrock | Texto libre parseado | Respuestas predecibles, validables con Zod, sin lógica de parsing frágil |

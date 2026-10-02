@@ -1,0 +1,20 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # El repositorio es un monorepo — el frontend vive en frontend/
+        # Amplify ejecuta los comandos desde la raíz del repositorio
+        - cd frontend && npm ci
+    build:
+      commands:
+        # Continuar en frontend/ (cada fase reinicia el directorio en Amplify)
+        - cd frontend && npm run build
+  artifacts:
+    # El output de Vite es frontend/dist
+    baseDirectory: frontend/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - frontend/node_modules/**/*

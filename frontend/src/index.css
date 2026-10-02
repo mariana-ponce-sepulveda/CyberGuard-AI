@@ -1,0 +1,163 @@
+/* ─── Google Fonts ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ─── Tailwind ──────────────────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Variables CSS — Sistema de diseño CyberGuard AI ────────── */
+@layer base {
+  :root {
+    /* Fondos */
+    --bg-base:        #080d1a;
+    --bg-surface:     #0d1526;
+    --bg-elevated:    #121d35;
+    --bg-muted:       #1a2640;
+
+    /* Acentos */
+    --accent-primary:   #00d4ff;
+    --accent-secondary: #3b82f6;
+    --accent-glow:      rgba(0, 212, 255, 0.15);
+    --accent-gradient:  linear-gradient(135deg, #00d4ff, #3b82f6);
+
+    /* Riesgo */
+    --risk-low:       #22c55e;
+    --risk-low-bg:    rgba(34, 197, 94, 0.10);
+    --risk-medium:    #f59e0b;
+    --risk-medium-bg: rgba(245, 158, 11, 0.10);
+    --risk-high:      #ef4444;
+    --risk-high-bg:   rgba(239, 68, 68, 0.10);
+
+    /* Texto */
+    --text-primary:   #f0f4ff;
+    --text-secondary: #8892a4;
+    --text-muted:     #4a5568;
+    --text-accent:    #00d4ff;
+
+    /* Componentes */
+    --radius: 0.5rem;
+  }
+
+  /* ─── Reset y base ────────────────────────────────────────── */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ─── Scrollbar estilizada ────────────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg-base);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--bg-muted);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+    opacity: 0.5;
+  }
+}
+
+/* ─── Fondo grid tecnológico ─────────────────────────────────── */
+@layer utilities {
+  .bg-tech-grid {
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* ─── Glassmorphism ──────────────────────────────────────── */
+  .glass {
+    background: rgba(13, 21, 38, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 212, 255, 0.10);
+  }
+
+  /* ─── Borde superior con gradiente ───────────────────────── */
+  .border-top-gradient {
+    position: relative;
+  }
+  .border-top-gradient::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent-gradient);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  /* ─── Glow de acento ─────────────────────────────────────── */
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.25);
+  }
+  .glow-cyan-sm {
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
+  }
+
+  /* ─── Fuente mono ────────────────────────────────────────── */
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ─── Colores de riesgo dinámicos ────────────────────────── */
+  .risk-low    { color: var(--risk-low); }
+  .risk-medium { color: var(--risk-medium); }
+  .risk-high   { color: var(--risk-high); }
+
+  .risk-low-bg    { background-color: var(--risk-low-bg); }
+  .risk-medium-bg { background-color: var(--risk-medium-bg); }
+  .risk-high-bg   { background-color: var(--risk-high-bg); }
+
+  /* ─── Texto degradado ─────────────────────────────────────── */
+  .text-gradient {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ─── Barra de progreso shimmer (estado de carga) ────────── */
+  .shimmer-bar {
+    background: linear-gradient(
+      90deg,
+      var(--bg-muted) 0%,
+      var(--accent-primary) 50%,
+      var(--bg-muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
+  }
+}
+
+/* ─── Accesibilidad: reducir movimiento ──────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

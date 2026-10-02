@@ -1,0 +1,21 @@
+{
+  "name": "cyberguard-ai-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AWS Lambda function — CyberGuard AI analysis backend",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "build:zip": "node esbuild.config.mjs && powershell Compress-Archive -Force -Path dist/index.js -DestinationPath dist/function.zip"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.637.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20.16.1",
+    "esbuild": "^0.23.1",
+    "typescript": "^5.5.4"
+  }
+}

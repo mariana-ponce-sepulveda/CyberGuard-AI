@@ -90,7 +90,7 @@
   - Extraer el texto del campo `content[0].text` de la respuesta de Claude.
   - Parsear el JSON del texto con el schema Zod de `analysis-result.ts`.
   - Agregar `source: 'llm'` y `analyzedAt: new Date().toISOString()`.
-  - Timeout implícito vía el timeout de Lambda (25s); si Bedrock no responde, Lambda lanza error y el handler activa el fallback.
+  - Implementar timeout de **20 segundos** para la llamada a Bedrock usando `AbortController` o `Promise.race`. Si se supera, lanzar un error que el handler captura para activar el fallback heurístico inmediatamente.
 
 ### Tarea 2.5 — Analizador heurístico (fallback)
 - [ ] Crear `backend/src/analysis/heuristic-analyzer.ts`:
