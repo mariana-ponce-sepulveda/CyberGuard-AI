@@ -2,7 +2,6 @@ import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import type { LambdaApiResponse, AnalysisResult } from './types/index.js'
 import { parseRequest } from './schemas/analysis-request.js'
 import { sanitizeInput } from './analysis/sanitizer.js'
-import { analyzeWithBedrock } from './analysis/bedrock-analyzer.js'
 import { analyzeWithHeuristics } from './analysis/heuristic-analyzer.js'
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -80,44 +79,23 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     requestId: event.requestContext.requestId,
   })
 
-  // ── 3. Análisis: Bedrock con fallback heurístico ─────────────────────────
+  // ── 3. Análisis heurístico directo ──────────────────────────────
   let result: AnalysisResult
-  let analysisSource: 'llm' | 'heuristic' = 'llm'
+  let analysisSource: 'llm' | 'heuristic' = 'heuristic'
 
   try {
-    result = await analyzeWithBedrock(sanitizedRequest)
-    analysisSource = 'llm'
-  } catch (bedrockError) {
-    // Bedrock falló (timeout, error de red, modelo no disponible, etc.)
-    // Activar fallback heurístico inmediatamente — no propagar el error al usuario
-    const reason = bedrockError instanceof Error
-      ? bedrockError.message
-      : 'Error desconocido de Bedrock'
-
-    console.warn('[CyberGuard] Bedrock unavailable, using heuristic fallback:', {
-      reason,
-      type: sanitizedRequest.type,
+    result = analyzeWithHeuristics(sanitizedRequest)
+  } catch (heuristicError) {
+    console.error('[CyberGuard] Heuristic analyzer failed:', {
+      heuristicError: heuristicError instanceof Error
+        ? heuristicError.message
+        : 'Error desconocido',
       requestId: event.requestContext.requestId,
     })
-
-    try {
-      result = analyzeWithHeuristics(sanitizedRequest)
-      analysisSource = 'heuristic'
-    } catch (heuristicError) {
-      // Caso excepcional: ambos métodos fallaron
-      // El heurístico nunca debería llegar aquí, pero cubrimos el caso
-      console.error('[CyberGuard] Both analyzers failed:', {
-        bedrockError: reason,
-        heuristicError: heuristicError instanceof Error
-          ? heuristicError.message
-          : 'Error desconocido',
-        requestId: event.requestContext.requestId,
-      })
-      return errorResponse(
-        500,
-        'No se pudo completar el análisis. Por favor, inténtalo de nuevo.'
-      )
-    }
+    return errorResponse(
+      500,
+      'No se pudo completar el análisis. Por favor, inténtalo de nuevo.'
+    )
   }
 
   const duration = Date.now() - startTime
