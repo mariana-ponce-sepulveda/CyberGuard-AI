@@ -194,16 +194,4 @@ Los tres ejemplos predefinidos en la aplicación usan contenido completamente fi
 
 ---
 
-## Documentación adicional
-
-| Documento | Descripción |
-|-----------|-------------|
-| `.kiro/specs/cyberguard-ai/requirements.md` | Requisitos funcionales y no funcionales del MVP |
-| `.kiro/specs/cyberguard-ai/design.md` | Arquitectura, sistema de diseño, decisiones técnicas |
-| `.kiro/specs/cyberguard-ai/tasks.md` | Tareas de implementación por fase |
-| `infrastructure/deployment-guide.md` | Guía paso a paso de despliegue en AWS |
-| `infrastructure/e2e-checklist.md` | Checklist de verificación end-to-end |
-| `infrastructure/lambda-config.md` | Parámetros de configuración de Lambda |
-| `infrastructure/api-gateway.md` | Configuración de API Gateway |
-| `infrastructure/iam-policy.json` | Política IAM de mínimo privilegio |
-| `infrastructure/amplify.yml` | Build spec de AWS Amplify |
+Amplify |
