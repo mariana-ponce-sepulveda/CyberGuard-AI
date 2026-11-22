@@ -194,4 +194,3 @@ Los tres ejemplos predefinidos en la aplicación usan contenido completamente fi
 
 ---
 
-Amplify |
